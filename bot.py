@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timedelta
 from urllib.parse import quote
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -27,7 +28,7 @@ ITEMS = {
     ])
 }
 
-# Hər platforma/oyun üçün 2 sual və hazır cavab düymələri: (qısa ad, sual, [düymə variantları])
+# Hər platforma/oyun üçün 2 sual və hazır cavab düymələri
 QUESTIONS = {
     "YouTube": [
         ("Abunəçi", "Kanalın neçə abunəçisi var?", ["0 - 1k", "1k - 10k", "10k - 50k", "50k+"]),
@@ -114,11 +115,17 @@ def init_db():
                 price TEXT NOT NULL,
                 a1 TEXT NOT NULL,
                 a2 TEXT NOT NULL,
-                created TEXT DEFAULT CURRENT_TIMESTAMP
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )"""
         )
 
+# 7 gündən köhnə olan bütün elanları avtomatik silən funksiya
+def clean_old_ads():
+    with db() as con:
+        con.execute("DELETE FROM ads WHERE created < datetime('now', '-7 days')")
+
 def add_ad(kind, user_id, username, cat, item, price, answers):
+    clean_old_ads()
     with db() as con:
         con.execute(
             "INSERT INTO ads (kind, user_id, username, cat, item, price, a1, a2) "
@@ -127,20 +134,23 @@ def add_ad(kind, user_id, username, cat, item, price, answers):
         )
 
 def count_ads(kind, item):
+    clean_old_ads()
     with db() as con:
         return con.execute(
             "SELECT COUNT(*) FROM ads WHERE kind = ? AND item = ?", (kind, item)
         ).fetchone()[0]
 
 def get_ads(kind, item, offset, limit):
+    clean_old_ads()
     with db() as con:
         return con.execute(
-            "SELECT id, username, price, a1, a2 FROM ads "
+            "SELECT id, username, price, a1, a2, created FROM ads "
             "WHERE kind = ? AND item = ? ORDER BY id DESC LIMIT ? OFFSET ?",
             (kind, item, limit, offset),
         ).fetchall()
 
 def my_ads(user_id):
+    clean_old_ads()
     with db() as con:
         return con.execute(
             "SELECT id, kind, item, price FROM ads WHERE user_id = ? ORDER BY id DESC",
@@ -222,30 +232,38 @@ def view_menu(kind, cat, index, offset):
     offset = max(0, min(offset, total - 1))
     items = get_ads(kind, name, offset, PER_PAGE)
     labels = [q[0] for q in QUESTIONS[name]]
-    price_label = "Qiymət" if kind == "s" else "Büdcə"
-    person = "Satıcı" if kind == "s" else "Alıcı"
-    heading = "Satış elanları" if kind == "s" else "Alıcı sorğuları"
+    price_label = "💰 Qiymət" if kind == "s" else "💰 Büdcə"
+    person = "👤 Satıcı" if kind == "s" else "👤 Alıcı"
+    heading = "🛒 SATIŞ ELANLARI" if kind == "s" else "📢 ALICI SORĞULARI"
 
-    lines = [f"**{name}** - {heading} ({offset + 1}-{offset + len(items)} / {total})\n"]
-    rows = []
+    # Başlıq hissəsi daha aydın və səliqəli şəkildə formalaşdırılır
+    lines = [
+        f"━━━━━━━━━━━━━━━━━━━━",
+        f"📌 **{name.upper()}** — {heading}",
+        f"📊 Göstərilir: {offset + 1}-{offset + len(items)} / Cəmi: {total}",
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+    ]
     
-    for n, (ad_id, username, price, a1, a2) in enumerate(items, start=offset + 1):
+    for n, (ad_id, username, price, a1, a2, created) in enumerate(items, start=offset + 1):
         msg = f"Salam, {name} elanınız (#{ad_id}) ilə bağlı yazıram. Hələ aktualdırmı?"
         clean_url = f"https://t.me/{username}?text={quote(msg)}"
         
-        # İstifadəçi adının üzərinə keçid linki əlavə olunub
+        # Elan kartı - daha səliqəli görünüş
         lines.append(
-            f"{n}. {price_label}: **{price}**\n"
-            f"   {labels[0]}: {a1}\n"
-            f"   {labels[1]}: {a2}\n"
-            f"   {person}: [@{username}]({clean_url})\n"
+            f"🔹 **ELAN #{ad_id}**\n"
+            f"├ {price_label}: `{price}`\n"
+            f"├ 📊 {labels[0]}: {a1}\n"
+            f"├ ⚙️ {labels[1]}: {a2}\n"
+            f"└ {person}: [@{username}]({clean_url})\n"
+            f"───────────────"
         )
 
+    rows = []
     nav = []
     if offset > 0:
-        nav.append(InlineKeyboardButton("Əvvəlki", callback_data=f"v:{kind}:{cat}:{index}:{max(0, offset - PER_PAGE)}"))
+        nav.append(InlineKeyboardButton("⬅️ Əvvəlki", callback_data=f"v:{kind}:{cat}:{index}:{max(0, offset - PER_PAGE)}"))
     if offset + PER_PAGE < total:
-        nav.append(InlineKeyboardButton("Növbəti", callback_data=f"v:{kind}:{cat}:{index}:{offset + PER_PAGE}"))
+        nav.append(InlineKeyboardButton("Növbəti ➡️", callback_data=f"v:{kind}:{cat}:{index}:{offset + PER_PAGE}"))
     if nav:
         rows.append(nav)
         
@@ -258,11 +276,11 @@ def my_menu(user_id):
         text = "Sizin aktiv elanınız və ya sorğunuz yoxdur."
         rows = []
     else:
-        text = "Sizin aktiv elanlarınız və sorğularınız:\n\n" + "\n".join(
+        text = "Sizin aktiv elanlarınız və sorğularınız (7 gündən sonra avtomatik silinir):\n\n" + "\n".join(
             f"#{ad_id} | {KIND_NAME[kind]} | {item} | {price}"
             for ad_id, kind, item, price in items
         )
-        rows = [[InlineKeyboardButton(f"Sil: #{ad_id} {item}", callback_data=f"d:{ad_id}")] for ad_id, _, item, _ in items[:20]]
+        rows = [[InlineKeyboardButton(f"🗑 Sil: #{ad_id} {item}", callback_data=f"d:{ad_id}")] for ad_id, _, item, _ in items[:20]]
         
     rows.append([InlineKeyboardButton("Ana menyu", callback_data="home")])
     return text, InlineKeyboardMarkup(rows)
@@ -334,7 +352,6 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["form"] = form
         text, markup = form_prompt(form)
     elif kind == "opt":
-        # Düymədən seçilən cavabın emalı
         form = context.user_data.get("form")
         if not form:
             text, markup = main_menu()
@@ -362,7 +379,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=markup)
         return
 
-    # Yalnız 3-cü mərhələdə (Qiymət/Büdcə) istifadəçidən mətn qəbul edilir
     if form["step"] < 2:
         await update.message.reply_text("Zəhmət olmasa cavabı yuxarıdakı **düymələrdən** seçin.", parse_mode="Markdown")
         return
@@ -393,7 +409,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{price_label}: **{value}**\n"
         f"{labels[0]}: {form['answers'][0]}\n"
         f"{labels[1]}: {form['answers'][1]}\n"
-        f"{person}: @{user.username}"
+        f"{person}: @{user.username}\n\n"
+        f"ℹ️ *Elanınız 7 gün ərzində aktiv qalacaq.*"
     )
     
     rows = [
@@ -404,6 +421,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     init_db()
+    clean_old_ads()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(on_click))
