@@ -17,7 +17,7 @@ PER_PAGE = 5             # bir səhifədə neçə elan göstərilsin
 # =================================================
 
 MODES = {"al": "Hesab al", "sat": "Hesab sat"}
-
+  
 # Kateqoriyalar
 ITEMS = {
     "plat": ("Platformalar", ["YouTube", "Instagram", "TikTok", "Facebook", "Snapchat", "Twitter (X)", "Discord"]),
