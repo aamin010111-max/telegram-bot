@@ -1,5 +1,4 @@
 import sqlite3
-from urllib.parse import quote
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -14,6 +13,8 @@ from telegram.ext import (
 TOKEN = "8949659457:AAFoW7ZyRSW-l-Umu8rW6EtL_XSLSdXuiYY"
 DB_FILE = "elanlar.db"   # elanlar bu lokal faylda saxlanır
 PER_PAGE = 5             # bir səhifədə neçə elan göstərilsin
+MAX_PER_DAY = 2          # bir istifadəçi 24 saatda maksimum neçə elan qoya bilər
+EXPIRE_DAYS = 7          # elanlar neçə gündən sonra silinsin
 # =================================================
 
 MODES = {"al": "Hesab al", "sat": "Hesab sat"}
@@ -97,6 +98,8 @@ QUESTIONS = {
 
 KIND_NAME = {"s": "Elan", "b": "Alış sorğusu"}
 
+LIMIT_TEXT = f"Gündə maksimum {MAX_PER_DAY} elan qoya bilərsiniz. Sabah yenidən cəhd edin."
+
 # ------------------------- LOKAL BAZA (SQLITE) -------------------------
 def db():
     return sqlite3.connect(DB_FILE)
@@ -117,6 +120,33 @@ def init_db():
                 created TEXT DEFAULT CURRENT_TIMESTAMP
             )"""
         )
+        # Gündəlik limit üçün ayrıca qeyd cədvəli (elan silinsə də limit sıfırlanmasın)
+        con.execute(
+            """CREATE TABLE IF NOT EXISTS post_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                created TEXT DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
+    purge_old()
+
+def purge_old():
+    """7 gündən köhnə elanları silir."""
+    with db() as con:
+        con.execute(
+            f"DELETE FROM ads WHERE created < datetime('now', '-{EXPIRE_DAYS} days')"
+        )
+        con.execute("DELETE FROM post_log WHERE created < datetime('now', '-2 days')")
+
+def posts_last_day(user_id):
+    with db() as con:
+        return con.execute(
+            "SELECT COUNT(*) FROM post_log WHERE user_id = ? AND created >= datetime('now', '-1 day')",
+            (user_id,),
+        ).fetchone()[0]
+
+def can_post(user_id):
+    return posts_last_day(user_id) < MAX_PER_DAY
 
 def add_ad(kind, user_id, username, cat, item, price, answers):
     with db() as con:
@@ -125,14 +155,17 @@ def add_ad(kind, user_id, username, cat, item, price, answers):
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (kind, user_id, username, cat, item, price, answers[0], answers[1]),
         )
+        con.execute("INSERT INTO post_log (user_id) VALUES (?)", (user_id,))
 
 def count_ads(kind, item):
+    purge_old()
     with db() as con:
         return con.execute(
             "SELECT COUNT(*) FROM ads WHERE kind = ? AND item = ?", (kind, item)
         ).fetchone()[0]
 
 def get_ads(kind, item, offset, limit):
+    purge_old()
     with db() as con:
         return con.execute(
             "SELECT id, username, price, a1, a2 FROM ads "
@@ -141,6 +174,7 @@ def get_ads(kind, item, offset, limit):
         ).fetchall()
 
 def my_ads(user_id):
+    purge_old()
     with db() as con:
         return con.execute(
             "SELECT id, kind, item, price FROM ads WHERE user_id = ? ORDER BY id DESC",
@@ -228,7 +262,7 @@ def view_menu(kind, cat, index, offset):
 
     lines = [f"**{name}** - {heading} ({offset + 1}-{offset + len(items)} / {total})\n"]
     rows = []
-    
+
     for n, (ad_id, username, price, a1, a2) in enumerate(items, start=offset + 1):
         lines.append(
             f"{n}. {price_label}: **{price}**\n"
@@ -236,9 +270,6 @@ def view_menu(kind, cat, index, offset):
             f"   {labels[1]}: {a2}\n"
             f"   {person}: @{username}\n"
         )
-        msg = f"Salam, {name} elanınız (#{ad_id}) ilə bağlı yazıram. Hələ aktualdırmı?"
-        clean_url = f"https://t.me/{username}?text={quote(msg)}"
-        rows.append([InlineKeyboardButton(f"@{username} ilə əlaqə saxla", url=clean_url)])
 
     nav = []
     if offset > 0:
@@ -247,7 +278,7 @@ def view_menu(kind, cat, index, offset):
         nav.append(InlineKeyboardButton("Növbəti", callback_data=f"v:{kind}:{cat}:{index}:{offset + PER_PAGE}"))
     if nav:
         rows.append(nav)
-        
+
     rows.append(back_row)
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
@@ -262,7 +293,7 @@ def my_menu(user_id):
             for ad_id, kind, item, price in items
         )
         rows = [[InlineKeyboardButton(f"Sil: #{ad_id} {item}", callback_data=f"d:{ad_id}")] for ad_id, _, item, _ in items[:20]]
-        
+
     rows.append([InlineKeyboardButton("Ana menyu", callback_data="home")])
     return text, InlineKeyboardMarkup(rows)
 
@@ -270,11 +301,11 @@ def my_menu(user_id):
 def form_prompt(form):
     item, kind, step = form["item"], form["kind"], form["step"]
     head = f"**{item}** ({KIND_NAME[kind]})\n\n"
-    
+
     if step < 2:
         label, question, options = QUESTIONS[item][step]
         text = f"{head}Mərhələ {step + 1}/3:\n**{question}**"
-        
+
         buttons = [
             [InlineKeyboardButton(opt, callback_data=f"opt:{idx}")]
             for idx, opt in enumerate(options)
@@ -322,6 +353,9 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 show_alert=True,
             )
             return
+        if not can_post(query.from_user.id):
+            await query.answer(LIMIT_TEXT, show_alert=True)
+            return
         ad_kind, cat, index = parts[1], parts[2], int(parts[3])
         form = {
             "kind": ad_kind,
@@ -343,7 +377,7 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         opt_idx = int(parts[1])
         item = form["item"]
         step = form["step"]
-        
+
         selected_option = QUESTIONS[item][step][2][opt_idx]
         form["answers"].append(selected_option)
         form["step"] += 1
@@ -378,6 +412,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("form", None)
         return
 
+    # Son yoxlama: gündəlik limit
+    if not can_post(user.id):
+        context.user_data.pop("form", None)
+        await update.message.reply_text(LIMIT_TEXT)
+        return
+
     # Məlumatları bazaya əlavə et
     add_ad(form["kind"], user.id, user.username, form["cat"], form["item"], value, form["answers"])
     context.user_data.pop("form", None)
@@ -385,7 +425,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     labels = [q[0] for q in QUESTIONS[form["item"]]]
     price_label = "Qiymət" if form["kind"] == "s" else "Büdcə"
     person = "Satıcı" if form["kind"] == "s" else "Alıcı"
-    
+
     summary = (
         f"**{KIND_NAME[form['kind']]} yerləşdirildi!**\n\n"
         f"Kanal/Oyun: **{form['item']}**\n"
@@ -394,7 +434,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{labels[1]}: {form['answers'][1]}\n"
         f"{person}: @{user.username}"
     )
-    
+
     rows = [
         [InlineKeyboardButton("Elanlarım", callback_data="m")],
         [InlineKeyboardButton("Ana menyu", callback_data="home")],
