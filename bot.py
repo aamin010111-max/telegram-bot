@@ -12,8 +12,8 @@ from telegram.ext import (
 
 # ================= BUNLARI DƏYİŞ =================
 TOKEN = "8949659457:AAFoW7ZyRSW-l-Umu8rW6EtL_XSLSdXuiYY"
-DB_FILE = "elanlar.db"   # elanlar bu lokal faylda saxlanır
-PER_PAGE = 5             # bir səhifədə neçə elan göstərilsin
+DB_FILE = "elanlar.db"    # elanlar bu lokal faylda saxlanır
+PER_PAGE = 5              # bir səhifədə neçə elan göstərilsin
 # =================================================
 
 MODES = {"al": "Hesab al", "sat": "Hesab sat"}
@@ -230,15 +230,16 @@ def view_menu(kind, cat, index, offset):
     rows = []
     
     for n, (ad_id, username, price, a1, a2) in enumerate(items, start=offset + 1):
+        msg = f"Salam, {name} elanınız (#{ad_id}) ilə bağlı yazıram. Hələ aktualdırmı?"
+        clean_url = f"https://t.me/{username}?text={quote(msg)}"
+        
+        # İstifadəçi adının üzərinə keçid linki əlavə olunub
         lines.append(
             f"{n}. {price_label}: **{price}**\n"
             f"   {labels[0]}: {a1}\n"
             f"   {labels[1]}: {a2}\n"
-            f"   {person}: @{username}\n"
+            f"   {person}: [@{username}]({clean_url})\n"
         )
-        msg = f"Salam, {name} elanınız (#{ad_id}) ilə bağlı yazıram. Hələ aktualdırmı?"
-        clean_url = f"https://t.me/{username}?text={quote(msg)}"
-        rows.append([InlineKeyboardButton(f"@{username} ilə əlaqə saxla", url=clean_url)])
 
     nav = []
     if offset > 0:
@@ -361,7 +362,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=markup)
         return
 
-    # Yalnız 3-cü mərhələdə (Qiymət/Büdcə) istifadəçidən mətin qəbul edilir
+    # Yalnız 3-cü mərhələdə (Qiymət/Büdcə) istifadəçidən mətn qəbul edilir
     if form["step"] < 2:
         await update.message.reply_text("Zəhmət olmasa cavabı yuxarıdakı **düymələrdən** seçin.", parse_mode="Markdown")
         return
