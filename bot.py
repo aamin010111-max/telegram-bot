@@ -1,4 +1,5 @@
 import sqlite3
+from urllib.parse import quote
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -13,8 +14,6 @@ from telegram.ext import (
 TOKEN = "8949659457:AAFoW7ZyRSW-l-Umu8rW6EtL_XSLSdXuiYY"
 DB_FILE = "elanlar.db"   # elanlar bu lokal faylda saxlanır
 PER_PAGE = 5             # bir səhifədə neçə elan göstərilsin
-MAX_PER_DAY = 2          # bir istifadəçi 24 saatda maksimum neçə elan qoya bilər
-EXPIRE_DAYS = 7          # elanlar neçə gündən sonra silinsin
 # =================================================
 
 MODES = {"al": "Hesab al", "sat": "Hesab sat"}
@@ -98,8 +97,6 @@ QUESTIONS = {
 
 KIND_NAME = {"s": "Elan", "b": "Alış sorğusu"}
 
-LIMIT_TEXT = f"Gündə maksimum {MAX_PER_DAY} elan qoya bilərsiniz. Sabah yenidən cəhd edin."
-
 # ------------------------- LOKAL BAZA (SQLITE) -------------------------
 def db():
     return sqlite3.connect(DB_FILE)
@@ -120,33 +117,6 @@ def init_db():
                 created TEXT DEFAULT CURRENT_TIMESTAMP
             )"""
         )
-        # Gündəlik limit üçün ayrıca qeyd cədvəli (elan silinsə də limit sıfırlanmasın)
-        con.execute(
-            """CREATE TABLE IF NOT EXISTS post_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                created TEXT DEFAULT CURRENT_TIMESTAMP
-            )"""
-        )
-    purge_old()
-
-def purge_old():
-    """7 gündən köhnə elanları silir."""
-    with db() as con:
-        con.execute(
-            f"DELETE FROM ads WHERE created < datetime('now', '-{EXPIRE_DAYS} days')"
-        )
-        con.execute("DELETE FROM post_log WHERE created < datetime('now', '-2 days')")
-
-def posts_last_day(user_id):
-    with db() as con:
-        return con.execute(
-            "SELECT COUNT(*) FROM post_log WHERE user_id = ? AND created >= datetime('now', '-1 day')",
-            (user_id,),
-        ).fetchone()[0]
-
-def can_post(user_id):
-    return posts_last_day(user_id) < MAX_PER_DAY
 
 def add_ad(kind, user_id, username, cat, item, price, answers):
     with db() as con:
@@ -155,17 +125,14 @@ def add_ad(kind, user_id, username, cat, item, price, answers):
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (kind, user_id, username, cat, item, price, answers[0], answers[1]),
         )
-        con.execute("INSERT INTO post_log (user_id) VALUES (?)", (user_id,))
 
 def count_ads(kind, item):
-    purge_old()
     with db() as con:
         return con.execute(
             "SELECT COUNT(*) FROM ads WHERE kind = ? AND item = ?", (kind, item)
         ).fetchone()[0]
 
 def get_ads(kind, item, offset, limit):
-    purge_old()
     with db() as con:
         return con.execute(
             "SELECT id, username, price, a1, a2 FROM ads "
@@ -174,7 +141,6 @@ def get_ads(kind, item, offset, limit):
         ).fetchall()
 
 def my_ads(user_id):
-    purge_old()
     with db() as con:
         return con.execute(
             "SELECT id, kind, item, price FROM ads WHERE user_id = ? ORDER BY id DESC",
@@ -271,6 +237,7 @@ def view_menu(kind, cat, index, offset):
             f"   {person}: @{username}\n"
         )
 
+
     nav = []
     if offset > 0:
         nav.append(InlineKeyboardButton("Əvvəlki", callback_data=f"v:{kind}:{cat}:{index}:{max(0, offset - PER_PAGE)}"))
@@ -353,9 +320,6 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 show_alert=True,
             )
             return
-        if not can_post(query.from_user.id):
-            await query.answer(LIMIT_TEXT, show_alert=True)
-            return
         ad_kind, cat, index = parts[1], parts[2], int(parts[3])
         form = {
             "kind": ad_kind,
@@ -412,7 +376,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("form", None)
         return
 
-    # Son yoxlama: gündəlik limit
     if not can_post(user.id):
         context.user_data.pop("form", None)
         await update.message.reply_text(LIMIT_TEXT)
