@@ -12,8 +12,8 @@ from telegram.ext import (
 
 # ================= BUNLARI DƏYİŞ =================
 TOKEN = "8949659457:AAFoW7ZyRSW-l-Umu8rW6EtL_XSLSdXuiYY"
-DB_FILE = "elanlar.db"   # elanlar bu lokal faylda saxlanır
-PER_PAGE = 5             # bir səhifədə neçə elan göstərilsin
+DB_FILE = "elanlar.db"    # elanlar bu lokal faylda saxlanır
+PER_PAGE = 5              # bir səhifədə neçə elan göstərilsin
 # =================================================
 
 MODES = {"al": "Hesab al", "sat": "Hesab sat"}
@@ -27,7 +27,7 @@ ITEMS = {
     ])
 }
 
-# Hər platforma/oyun üçün 2 sual və hazır cavab düymələri: (qısa ad, sual, [düymə variantları])
+# Hər platforma/oyun üçün 2 sual və hazır cavab düymələri
 QUESTIONS = {
     "YouTube": [
         ("Abunəçi", "Kanalın neçə abunəçisi var?", ["0 - 1k", "1k - 10k", "10k - 50k", "50k+"]),
@@ -157,17 +157,17 @@ def chunk(buttons, size):
 
 def main_menu():
     rows = [
-        [InlineKeyboardButton("Hesab al", callback_data="a:al")],
-        [InlineKeyboardButton("Hesab sat", callback_data="a:sat")],
-        [InlineKeyboardButton("Elanlarım", callback_data="m")],
+        [InlineKeyboardButton("🛒 Hesab al", callback_data="a:al")],
+        [InlineKeyboardButton("📢 Hesab sat", callback_data="a:sat")],
+        [InlineKeyboardButton("📁 Elanlarım", callback_data="m")],
     ]
     return "Xoş gəldiniz! Nə etmək istəyirsiniz?", InlineKeyboardMarkup(rows)
 
 def category_menu(mode):
     rows = [
-        [InlineKeyboardButton("Platformalar", callback_data=f"l:{mode}:plat")],
-        [InlineKeyboardButton("Oyunlar", callback_data=f"l:{mode}:game")],
-        [InlineKeyboardButton("Ana menyu", callback_data="home")],
+        [InlineKeyboardButton("📱 Platformalar", callback_data=f"l:{mode}:plat")],
+        [InlineKeyboardButton("🎮 Oyunlar", callback_data=f"l:{mode}:game")],
+        [InlineKeyboardButton("🏠 Ana menyu", callback_data="home")],
     ]
     return f"Seçim: **{MODES[mode]}**\n\nKateqoriyanı seçin:", InlineKeyboardMarkup(rows)
 
@@ -179,8 +179,8 @@ def list_menu(mode, cat):
     ]
     rows = chunk(buttons, 2)
     rows.append([
-        InlineKeyboardButton("Geri", callback_data=f"a:{mode}"),
-        InlineKeyboardButton("Ana menyu", callback_data="home"),
+        InlineKeyboardButton("◀️ Geri", callback_data=f"a:{mode}"),
+        InlineKeyboardButton("🏠 Ana menyu", callback_data="home"),
     ])
     return f"**{MODES[mode]}** > **{title}**\n\nSeçim edin:", InlineKeyboardMarkup(rows)
 
@@ -191,20 +191,20 @@ def final_menu(mode, cat, index):
         total = count_ads("s", name)
         text = f"**Hesab almaq**\n\nSeçildi: **{name}**\nMövcud satış elanı: **{total}**"
         if total > 0:
-            rows.append([InlineKeyboardButton(f"Elanlara bax ({total})", callback_data=f"v:s:{cat}:{index}:0")])
+            rows.append([InlineKeyboardButton(f"👁️ Elanlara bax ({total})", callback_data=f"v:s:{cat}:{index}:0")])
         else:
             text += "\n\nHələlik bu kateqoriyada satış elanı yoxdur."
-        rows.append([InlineKeyboardButton("Alış sorğusu yerləşdir", callback_data=f"s:b:{cat}:{index}")])
+        rows.append([InlineKeyboardButton("➕ Alış sorğusu yerləşdir", callback_data=f"s:b:{cat}:{index}")])
     else:
         total = count_ads("b", name)
         text = f"**Hesab satmaq**\n\nSeçildi: **{name}**\nAlıcı sorğusu sayı: **{total}**"
-        rows.append([InlineKeyboardButton("Satış elanı yerləşdir", callback_data=f"s:s:{cat}:{index}")])
+        rows.append([InlineKeyboardButton("➕ Satış elanı yerləşdir", callback_data=f"s:s:{cat}:{index}")])
         if total > 0:
-            rows.append([InlineKeyboardButton(f"Alıcı sorğularına bax ({total})", callback_data=f"v:b:{cat}:{index}:0")])
+            rows.append([InlineKeyboardButton(f"👁️ Alıcı sorğularına bax ({total})", callback_data=f"v:b:{cat}:{index}:0")])
 
     rows.append([
-        InlineKeyboardButton("Geri", callback_data=f"l:{mode}:{cat}"),
-        InlineKeyboardButton("Ana menyu", callback_data="home"),
+        InlineKeyboardButton("◀️ Geri", callback_data=f"l:{mode}:{cat}"),
+        InlineKeyboardButton("🏠 Ana menyu", callback_data="home"),
     ])
     return text, InlineKeyboardMarkup(rows)
 
@@ -213,38 +213,49 @@ def view_menu(kind, cat, index, offset):
     total = count_ads(kind, name)
     back_mode = "al" if kind == "s" else "sat"
     back_row = [
-        InlineKeyboardButton("Geri", callback_data=f"f:{back_mode}:{cat}:{index}"),
-        InlineKeyboardButton("Ana menyu", callback_data="home"),
+        InlineKeyboardButton("◀️ Geri", callback_data=f"f:{back_mode}:{cat}:{index}"),
+        InlineKeyboardButton("🏠 Ana menyu", callback_data="home"),
     ]
     if total == 0:
-        return f"**{name}**\n\nHələlik heç bir elan tapılmadı.", InlineKeyboardMarkup([back_row])
+        return f"📌 **{name}**\n\n❌ Hələlik heç bir elan tapılmadı.", InlineKeyboardMarkup([back_row])
 
     offset = max(0, min(offset, total - 1))
     items = get_ads(kind, name, offset, PER_PAGE)
     labels = [q[0] for q in QUESTIONS[name]]
-    price_label = "Qiymət" if kind == "s" else "Büdcə"
-    person = "Satıcı" if kind == "s" else "Alıcı"
-    heading = "Satış elanları" if kind == "s" else "Alıcı sorğuları"
+    
+    price_label = "💰 Qiymət" if kind == "s" else "💵 Büdcə"
+    person = "👤 Satıcı" if kind == "s" else "👤 Alıcı"
+    heading = "🛒 Satış elanları" if kind == "s" else "🔍 Alıcı sorğuları"
 
-    lines = [f"**{name}** - {heading} ({offset + 1}-{offset + len(items)} / {total})\n"]
+    lines = [
+        f"📋 **{name}** — {heading}",
+        f"📊 Göstərilir: **{offset + 1}-{offset + len(items)}** / Cəmi: **{total}**",
+        "──────────────────────────────\n"
+    ]
+    
     rows = []
     
     for n, (ad_id, username, price, a1, a2) in enumerate(items, start=offset + 1):
-        lines.append(
-            f"{n}. {price_label}: **{price}**\n"
-            f"   {labels[0]}: {a1}\n"
-            f"   {labels[1]}: {a2}\n"
-            f"   {person}: @{username}\n"
+        card = (
+            f"🔹 **Elan #{ad_id}**\n"
+            f"{price_label}: **{price}**\n"
+            f"🔸 {labels[0]}: `{a1}`\n"
+            f"🔸 {labels[1]}: `{a2}`\n"
+            f"{person}: @{username}\n"
+            f"──────────────────────────────"
         )
+        lines.append(card)
+        
         msg = f"Salam, {name} elanınız (#{ad_id}) ilə bağlı yazıram. Hələ aktualdırmı?"
         clean_url = f"https://t.me/{username}?text={quote(msg)}"
-        rows.append([InlineKeyboardButton(f"@{username} ilə əlaqə saxla", url=clean_url)])
+        rows.append([InlineKeyboardButton(f"💬 @{username} ilə əlaqə saxla", url=clean_url)])
 
     nav = []
     if offset > 0:
-        nav.append(InlineKeyboardButton("Əvvəlki", callback_data=f"v:{kind}:{cat}:{index}:{max(0, offset - PER_PAGE)}"))
+        nav.append(InlineKeyboardButton("⬅️ Əvvəlki", callback_data=f"v:{kind}:{cat}:{index}:{max(0, offset - PER_PAGE)}"))
     if offset + PER_PAGE < total:
-        nav.append(InlineKeyboardButton("Növbəti", callback_data=f"v:{kind}:{cat}:{index}:{offset + PER_PAGE}"))
+        nav.append(InlineKeyboardButton("Növbəti ➡️", callback_data=f"v:{kind}:{cat}:{index}:{offset + PER_PAGE}"))
+    
     if nav:
         rows.append(nav)
         
@@ -261,12 +272,11 @@ def my_menu(user_id):
             f"#{ad_id} | {KIND_NAME[kind]} | {item} | {price}"
             for ad_id, kind, item, price in items
         )
-        rows = [[InlineKeyboardButton(f"Sil: #{ad_id} {item}", callback_data=f"d:{ad_id}")] for ad_id, _, item, _ in items[:20]]
+        rows = [[InlineKeyboardButton(f"🗑️ Sil: #{ad_id} {item}", callback_data=f"d:{ad_id}")] for ad_id, _, item, _ in items[:20]]
         
-    rows.append([InlineKeyboardButton("Ana menyu", callback_data="home")])
+    rows.append([InlineKeyboardButton("🏠 Ana menyu", callback_data="home")])
     return text, InlineKeyboardMarkup(rows)
 
-# Formanın menyu görünüşünü yaradır
 def form_prompt(form):
     item, kind, step = form["item"], form["kind"], form["step"]
     head = f"**{item}** ({KIND_NAME[kind]})\n\n"
@@ -279,11 +289,11 @@ def form_prompt(form):
             [InlineKeyboardButton(opt, callback_data=f"opt:{idx}")]
             for idx, opt in enumerate(options)
         ]
-        buttons.append([InlineKeyboardButton("Ləğv et", callback_data="home")])
+        buttons.append([InlineKeyboardButton("❌ Ləğv et", callback_data="home")])
         return text, InlineKeyboardMarkup(buttons)
     else:
         text = f"{head}Mərhələ 3/3:\n" + ("**Qiyməti yazın** (məs: 25 AZN):" if kind == "s" else "**Büdcənizi yazın** (məs: 30 AZN):")
-        cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton("Ləğv et", callback_data="home")]])
+        cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Ləğv et", callback_data="home")]])
         return text, cancel_btn
 
 # ------------------------- HANDLERLƏR -------------------------
@@ -333,7 +343,6 @@ async def on_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["form"] = form
         text, markup = form_prompt(form)
     elif kind == "opt":
-        # Düymədən seçilən cavabın emalı
         form = context.user_data.get("form")
         if not form:
             text, markup = main_menu()
@@ -361,7 +370,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=markup)
         return
 
-    # Yalnız 3-cü mərhələdə (Qiymət/Büdcə) istifadəçidən mətin qəbul edilir
     if form["step"] < 2:
         await update.message.reply_text("Zəhmət olmasa cavabı yuxarıdakı **düymələrdən** seçin.", parse_mode="Markdown")
         return
@@ -378,7 +386,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("form", None)
         return
 
-    # Məlumatları bazaya əlavə et
     add_ad(form["kind"], user.id, user.username, form["cat"], form["item"], value, form["answers"])
     context.user_data.pop("form", None)
 
@@ -387,17 +394,17 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     person = "Satıcı" if form["kind"] == "s" else "Alıcı"
     
     summary = (
-        f"**{KIND_NAME[form['kind']]} yerləşdirildi!**\n\n"
+        f"✅ **{KIND_NAME[form['kind']]} yerləşdirildi!**\n\n"
         f"Kanal/Oyun: **{form['item']}**\n"
         f"{price_label}: **{value}**\n"
-        f"{labels[0]}: {form['answers'][0]}\n"
-        f"{labels[1]}: {form['answers'][1]}\n"
+        f"{labels[0]}: `{form['answers'][0]}`\n"
+        f"{labels[1]}: `{form['answers'][1]}`\n"
         f"{person}: @{user.username}"
     )
     
     rows = [
-        [InlineKeyboardButton("Elanlarım", callback_data="m")],
-        [InlineKeyboardButton("Ana menyu", callback_data="home")],
+        [InlineKeyboardButton("📁 Elanlarım", callback_data="m")],
+        [InlineKeyboardButton("🏠 Ana menyu", callback_data="home")],
     ]
     await update.message.reply_text(summary, reply_markup=InlineKeyboardMarkup(rows), parse_mode="Markdown")
 
